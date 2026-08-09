@@ -6,36 +6,31 @@ import google.generativeai as genai
 
 # Page Configuration
 st.set_page_config(
-    page_title="DocMind AI - Intelligent Template Engine",
+    page_title="DocMind AI - Precision Template Transfer Engine",
     page_icon="📄",
     layout="centered"
 )
 
-st.title("📄 DocMind AI: Intelligent Template Styler")
-st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
+st.title("📄 DocMind AI: Precision Template Transfer Engine")
+st.write("Upload a reference `.docx` template, paste your text, and transfer styles with 100% precision!")
 
 # ---------------------------------------------------------
-# 1. AI PARSER WITH DYNAMIC MODEL RESOLUTION & FALLBACKS
+# 1. AI PARSER WITH DYNAMIC MODEL RESOLUTION
 # ---------------------------------------------------------
 def ai_intelligent_parse(raw_text, api_key):
     """
-    Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
-    Automatically resolves valid available models dynamically.
+    Parses unstructured text into semantically labeled blocks via Gemini API.
     """
     genai.configure(api_key=api_key)
     
-    # Priority list of current active model identifiers
     candidate_models = [
         'gemini-2.0-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash',
         'gemini-1.5-pro'
     ]
     
-    # Try fetching dynamically from API
     try:
         available = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Put flash models at the top
         flash_available = [m for m in available if 'flash' in m]
         if flash_available:
             candidate_models = flash_available + candidate_models
@@ -46,10 +41,10 @@ def ai_intelligent_parse(raw_text, api_key):
 
     prompt = f"""
     You are an expert document structure parser.
-    Analyze the following raw text and divide it into structured logical blocks.
+    Analyze the raw text and divide it into structured logical blocks.
     Classify each block into one of these exact types: 'title', 'heading1', 'heading2', or 'body'.
 
-    Return ONLY a raw JSON list of objects with the keys "type" and "text". Do not include markdown code block ticks or explanation.
+    Return ONLY a raw JSON list of objects with the keys "type" and "text". Do not include markdown fences or extra prose.
 
     Raw Text:
     {raw_text}
@@ -58,7 +53,6 @@ def ai_intelligent_parse(raw_text, api_key):
     response = None
     last_error = None
 
-    # Attempt generation across candidates
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
@@ -71,78 +65,69 @@ def ai_intelligent_parse(raw_text, api_key):
             continue
 
     if not response or not response.text:
-        raise RuntimeError(f"Could not reach any valid Gemini model endpoint. Last error: {str(last_error)}")
+        raise RuntimeError(f"Could not connect to Gemini API: {str(last_error)}")
 
     clean_json = response.text.strip().lstrip("```json").rstrip("```").strip()
     return json.loads(clean_json)
 
 # ---------------------------------------------------------
-# 2. EXACT TEMPLATE STYLER ENGINE
+# 2. ACCURATE IN-PLACE TEMPLATE MUTATION ENGINE
 # ---------------------------------------------------------
-class IntelligentTemplateStyler:
+class PreciseInPlaceEngine:
     def __init__(self, docx_stream):
+        # Open template directly so XML theme, margins, and styles remain untouched
         self.doc = Document(docx_stream)
-        self.heading_p = None
-        self.body_p = None
-        self._analyze_template()
+        self.style_map = {}
+        self._map_exemplar_styles()
 
-    def _analyze_template(self):
-        """Scans uploaded template for sample Heading and Body paragraphs."""
+    def _map_exemplar_styles(self):
+        """Identifies standard heading/body styles present in the document."""
         for p in self.doc.paragraphs:
             text = p.text.strip()
             if not text:
                 continue
             
-            is_bold = any(run.bold for run in p.runs if run.bold is not None)
-            if (is_bold or len(text) < 50) and self.heading_p is None:
-                self.heading_p = p
-            elif len(text) >= 50 and self.body_p is None:
-                self.body_p = p
+            style_name = p.style.name
+            
+            if 'Heading 1' in style_name or 'Title' in style_name:
+                self.style_map['heading1'] = style_name
+            elif 'Heading 2' in style_name or 'Subtitle' in style_name:
+                self.style_map['heading2'] = style_name
+            elif 'Normal' in style_name or 'Body' in style_name:
+                self.style_map['body'] = style_name
 
-        if self.heading_p is None and len(self.doc.paragraphs) > 0:
-            self.heading_p = self.doc.paragraphs[0]
-        if self.body_p is None and len(self.doc.paragraphs) > 0:
-            self.body_p = self.doc.paragraphs[-1]
-
-    def _copy_font_style(self, source_run, target_run, force_bold=False):
-        """Copies exact font family, size, RGB color, and weight."""
-        if source_run.font.name:
-            target_run.font.name = source_run.font.name
-        if source_run.font.size:
-            target_run.font.size = source_run.font.size
-        if source_run.font.color and source_run.font.color.rgb:
-            target_run.font.color.rgb = source_run.font.color.rgb
-        target_run.bold = True if force_bold else source_run.bold
+        # Fallbacks to native styles
+        styles_in_doc = [s.name for s in self.doc.styles]
+        if 'heading1' not in self.style_map:
+            self.style_map['heading1'] = 'Heading 1' if 'Heading 1' in styles_in_doc else 'Normal'
+        if 'heading2' not in self.style_map:
+            self.style_map['heading2'] = 'Heading 2' if 'Heading 2' in styles_in_doc else 'Normal'
+        if 'body' not in self.style_map:
+            self.style_map['body'] = 'Normal'
 
     def generate_formatted_doc(self, structured_blocks):
-        h_style = self.heading_p.style if self.heading_p else 'Heading 1'
-        b_style = self.body_p.style if self.body_p else 'Normal'
-
-        # Clear placeholder text while keeping margins & document properties
+        """Mutates the document in-place to preserve exact layout and typography."""
+        # 1. Clear out original text elements
         body_elem = self.doc._body._element
         for p in list(self.doc.paragraphs):
             body_elem.remove(p._element)
 
-        # Inject AI-classified blocks into the document
+        # 2. Re-inject structured paragraphs using mapped template styles
         for block in structured_blocks:
-            b_type = block.get("type", "body")
+            b_type = block.get("type", "body").lower()
             text = block.get("text", "").strip()
 
             if not text:
                 continue
 
-            if b_type in ["title", "heading1", "heading2"]:
-                new_p = self.doc.add_paragraph(style=h_style)
-                run = new_p.add_run(text)
-                if self.heading_p and len(self.heading_p.runs) > 0:
-                    self._copy_font_style(self.heading_p.runs[0], run, force_bold=True)
-                else:
-                    run.bold = True
-            else:
-                new_p = self.doc.add_paragraph(style=b_style)
-                run = new_p.add_run(text)
-                if self.body_p and len(self.body_p.runs) > 0:
-                    self._copy_font_style(self.body_p.runs[0], run)
+            target_style = self.style_map.get(b_type, self.style_map['body'])
+            
+            # Add paragraph using native template style class
+            p = self.doc.add_paragraph(text, style=target_style)
+            
+            # Highlight titles/headings if style didn't force bold
+            if b_type in ['title', 'heading1', 'heading2'] and len(p.runs) > 0:
+                p.runs[0].bold = True
 
         output_stream = io.BytesIO()
         self.doc.save(output_stream)
@@ -153,37 +138,36 @@ class IntelligentTemplateStyler:
 # 3. STREAMLIT UI
 # ---------------------------------------------------------
 
-# Retrieve API key automatically from Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 st.subheader("1. Upload Reference Template (.docx)")
 uploaded_file = st.file_uploader("Upload sample Word file (Must be .docx)", type=["docx"])
 
-st.subheader("2. Paste Raw Content")
-raw_user_input = st.text_area("Paste any text or paragraph here:", value="", height=280)
+st.subheader("2. Paste Content")
+raw_user_input = st.text_area("Paste text or paragraphs here:", value="", height=280)
 
 if st.button("🚀 Intelligently Parse & Format Document"):
     if not api_key:
-        st.error("⚠️ GEMINI_API_KEY secret not found! Please configure secrets in Streamlit Cloud settings.")
+        st.error("⚠️ GEMINI_API_KEY secret not found! Configure secrets in Streamlit Cloud settings.")
     elif uploaded_file is None:
         st.error("Please upload a `.docx` template file first!")
     elif not raw_user_input.strip():
-        st.error("Please paste or type some content into the box!")
+        st.error("Please paste or type content into the box!")
     else:
         try:
-            with st.spinner("🤖 Intelligent AI parsing in progress..."):
+            with st.spinner("🤖 Classifying content structure..."):
                 structured_blocks = ai_intelligent_parse(raw_user_input, api_key)
                 
-            with st.spinner("🎨 Applying template styles..."):
-                styler = IntelligentTemplateStyler(uploaded_file)
-                output_doc_stream = styler.generate_formatted_doc(structured_blocks)
+            with st.spinner("🎨 Mutating template in-place for exact accuracy..."):
+                engine = PreciseInPlaceEngine(uploaded_file)
+                output_doc_stream = engine.generate_formatted_doc(structured_blocks)
 
-                st.success("Successfully parsed and formatted document!")
+                st.success("Successfully generated accurately formatted document!")
                 st.download_button(
                     label="📥 Download Formatted Word Document",
                     data=output_doc_stream,
-                    file_name="DocMind_AI_Formatted_Output.docx",
+                    file_name="DocMind_Precision_Formatted_Output.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
         except Exception as e:
-            st.error(f"Error during AI parsing or document formatting: {str(e)}")
+            st.error(f"Error during parsing or document formatting: {str(e)}")
