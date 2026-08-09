@@ -2,7 +2,7 @@ import io
 import json
 import streamlit as st
 from docx import Document
-from google import genai
+import google.generativeai as genai
 
 # Page Configuration
 st.set_page_config(
@@ -12,17 +12,18 @@ st.set_page_config(
 )
 
 st.title("📄 DocMind AI: Intelligent Template Styler")
-st.write("Upload your reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
+st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
-# 1. INTELLIGENT AI PARSER (LLM-BASED STRUCTURAL EXTRACTION)
+# 1. INTELLIGENT AI PARSER (STABLE GOOGLE SDK)
 # ---------------------------------------------------------
 def ai_intelligent_parse(raw_text, api_key):
     """
     Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
     Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
     """
-    client = genai.Client(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""
     You are an expert document structure parser.
@@ -35,12 +36,7 @@ def ai_intelligent_parse(raw_text, api_key):
     {raw_text}
     """
     
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-    
-    # Clean response text if LLM returns markdown fences
+    response = model.generate_content(prompt)
     clean_json = response.text.strip().lstrip("```json").rstrip("```").strip()
     return json.loads(clean_json)
 
