@@ -15,20 +15,45 @@ st.title("📄 DocMind AI: Intelligent Template Styler")
 st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
-# 1. INTELLIGENT AI PARSER (UPDATED MODEL ENDPOINT)
+# 1. DYNAMIC & AUTO-RESOLVING AI PARSER
 # ---------------------------------------------------------
+def get_working_gemini_model(api_key):
+    """
+    Dynamically finds an active Flash model supported by your Gemini API Key.
+    """
+    genai.configure(api_key=api_key)
+    
+    # Try dynamic listing first to get an active model
+    try:
+        all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Filter for flash models
+        flash_models = [m for m in all_models if 'flash' in m.lower()]
+        if flash_models:
+            # Pick the most recent model endpoint found
+            return genai.GenerativeModel(flash_models[0].replace('models/', ''))
+    except Exception:
+        pass
+
+    # Fallbacks across standard model aliases
+    fallback_models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash']
+    for model_name in fallback_models:
+        try:
+            m = genai.GenerativeModel(model_name)
+            return m
+        except Exception:
+            continue
+            
+    # Final default
+    return genai.GenerativeModel('gemini-1.5-flash-latest')
+
+
 def ai_intelligent_parse(raw_text, api_key):
     """
     Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
     Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
     """
-    genai.configure(api_key=api_key)
-    
-    # Use current active Gemini flash models with fallback
-    try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-    except Exception:
-        model = genai.GenerativeModel('gemini-2.0-flash')
+    model = get_working_gemini_model(api_key)
     
     prompt = f"""
     You are an expert document structure parser.
