@@ -15,7 +15,7 @@ st.title("📄 DocMind AI: Intelligent Template Styler")
 st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
-# 1. INTELLIGENT AI PARSER (STABLE GOOGLE SDK)
+# 1. INTELLIGENT AI PARSER (UPDATED MODEL ENDPOINT)
 # ---------------------------------------------------------
 def ai_intelligent_parse(raw_text, api_key):
     """
@@ -23,7 +23,12 @@ def ai_intelligent_parse(raw_text, api_key):
     Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
     """
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # Use current active Gemini flash models with fallback
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+    except Exception:
+        model = genai.GenerativeModel('gemini-2.0-flash')
     
     prompt = f"""
     You are an expert document structure parser.
