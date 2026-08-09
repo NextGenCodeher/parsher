@@ -15,18 +15,35 @@ st.title("📄 DocMind AI: Intelligent Template Styler")
 st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
-# 1. AI PARSER USING STABLE GEMINI-1.5-FLASH
+# 1. AI PARSER WITH DYNAMIC MODEL RESOLUTION & FALLBACKS
 # ---------------------------------------------------------
 def ai_intelligent_parse(raw_text, api_key):
     """
     Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
-    Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
+    Automatically resolves valid available models dynamically.
     """
     genai.configure(api_key=api_key)
     
-    # Use the universally supported stable model endpoint
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Priority list of current active model identifiers
+    candidate_models = [
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro'
+    ]
     
+    # Try fetching dynamically from API
+    try:
+        available = [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # Put flash models at the top
+        flash_available = [m for m in available if 'flash' in m]
+        if flash_available:
+            candidate_models = flash_available + candidate_models
+        elif available:
+            candidate_models = available + candidate_models
+    except Exception:
+        pass
+
     prompt = f"""
     You are an expert document structure parser.
     Analyze the following raw text and divide it into structured logical blocks.
@@ -38,10 +55,23 @@ def ai_intelligent_parse(raw_text, api_key):
     {raw_text}
     """
 
-    response = model.generate_content(prompt)
+    response = None
+    last_error = None
+
+    # Attempt generation across candidates
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            res = model.generate_content(prompt)
+            if res and res.text:
+                response = res
+                break
+        except Exception as e:
+            last_error = e
+            continue
 
     if not response or not response.text:
-        raise RuntimeError("Failed to generate content from Gemini API.")
+        raise RuntimeError(f"Could not reach any valid Gemini model endpoint. Last error: {str(last_error)}")
 
     clean_json = response.text.strip().lstrip("```json").rstrip("```").strip()
     return json.loads(clean_json)
