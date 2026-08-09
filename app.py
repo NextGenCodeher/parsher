@@ -15,45 +15,17 @@ st.title("📄 DocMind AI: Intelligent Template Styler")
 st.write("Upload a reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
-# 1. DYNAMIC & AUTO-RESOLVING AI PARSER
+# 1. AI PARSER USING STABLE GEMINI-1.5-FLASH
 # ---------------------------------------------------------
-def get_working_gemini_model(api_key):
-    """
-    Dynamically finds an active Flash model supported by your Gemini API Key.
-    """
-    genai.configure(api_key=api_key)
-    
-    # Try dynamic listing first to get an active model
-    try:
-        all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Filter for flash models
-        flash_models = [m for m in all_models if 'flash' in m.lower()]
-        if flash_models:
-            # Pick the most recent model endpoint found
-            return genai.GenerativeModel(flash_models[0].replace('models/', ''))
-    except Exception:
-        pass
-
-    # Fallbacks across standard model aliases
-    fallback_models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash']
-    for model_name in fallback_models:
-        try:
-            m = genai.GenerativeModel(model_name)
-            return m
-        except Exception:
-            continue
-            
-    # Final default
-    return genai.GenerativeModel('gemini-1.5-flash-latest')
-
-
 def ai_intelligent_parse(raw_text, api_key):
     """
     Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
     Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
     """
-    model = get_working_gemini_model(api_key)
+    genai.configure(api_key=api_key)
+    
+    # Use the universally supported stable model endpoint
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""
     You are an expert document structure parser.
@@ -65,8 +37,12 @@ def ai_intelligent_parse(raw_text, api_key):
     Raw Text:
     {raw_text}
     """
-    
+
     response = model.generate_content(prompt)
+
+    if not response or not response.text:
+        raise RuntimeError("Failed to generate content from Gemini API.")
+
     clean_json = response.text.strip().lstrip("```json").rstrip("```").strip()
     return json.loads(clean_json)
 
@@ -166,11 +142,9 @@ if st.button("🚀 Intelligently Parse & Format Document"):
     else:
         try:
             with st.spinner("🤖 Intelligent AI parsing in progress..."):
-                # Step 1: AI Intelligent Structural Parsing
                 structured_blocks = ai_intelligent_parse(raw_user_input, api_key)
                 
             with st.spinner("🎨 Applying template styles..."):
-                # Step 2: Inject into Template Engine
                 styler = IntelligentTemplateStyler(uploaded_file)
                 output_doc_stream = styler.generate_formatted_doc(structured_blocks)
 
