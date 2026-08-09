@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("📄 DocMind AI: Visual Template Transfer Engine")
-st.write("Upload any reference Word document (`.docx`), paste your new content, and generate a perfectly styled report!")
+st.write("Upload a reference Word document (`.docx`), paste your entire raw text in the box below, and generate a perfectly formatted report!")
 
 # ---------------------------------------------------------
 # 1. DYNAMIC TEMPLATE PARSER & STYLER ENGINE
@@ -25,7 +25,6 @@ class DynamicTemplateEngine:
 
     def _extract_styles(self):
         """Extracts page geometry and font styles from uploaded file."""
-        # 1. Extract Margins
         sec = self.doc.sections[0]
         self.style_profile["margins"] = {
             "top": sec.top_margin,
@@ -34,7 +33,6 @@ class DynamicTemplateEngine:
             "right": sec.right_margin
         }
 
-        # 2. Extract Typography & Hierarchy
         for paragraph in self.doc.paragraphs:
             for run in paragraph.runs:
                 font_name = run.font.name or "Times New Roman"
@@ -69,7 +67,7 @@ class DynamicTemplateEngine:
         sec.left_margin = self.style_profile["margins"]["left"]
         sec.right_margin = self.style_profile["margins"]["right"]
 
-        # Inject Text Blocks with Applied Rules
+        # Inject Content
         for block in text_blocks:
             p = new_doc.add_paragraph()
             run = p.add_run(block["text"])
@@ -86,64 +84,59 @@ class DynamicTemplateEngine:
             if style.get("color"):
                 run.font.color.rgb = style.get("color")
 
-        # Save into an in-memory buffer for instant browser download
         output_stream = io.BytesIO()
         new_doc.save(output_stream)
         output_stream.seek(0)
         return output_stream
 
+# Helper function to convert raw pasted text into headings and body blocks
+def parse_raw_text(raw_text):
+    lines = raw_text.strip().split("\n")
+    blocks = []
+    
+    for line in lines:
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        
+        # Treat short lines or lines ending with a colon/starting with # as headings
+        if len(cleaned) < 60 and (cleaned.endswith(":") or cleaned.startswith("#") or cleaned.isupper()):
+            heading_text = cleaned.lstrip("#").strip()
+            blocks.append({"type": "heading", "text": heading_text})
+        else:
+            blocks.append({"type": "body", "text": cleaned})
+            
+    return blocks
+
 # ---------------------------------------------------------
 # 2. STREAMLIT USER INTERFACE
 # ---------------------------------------------------------
 
-# Section 1: Template Upload
+# Section 1: File Upload
 st.subheader("1. Upload Reference Template (.docx)")
-uploaded_file = st.file_uploader(
-    "Upload sample Word file (e.g., CivicVoice_Final_Abstract_Proposal.docx)", 
-    type=["docx"]
-)
+uploaded_file = st.file_uploader("Upload sample Word file", type=["docx"])
 
-# Section 2: Text Inputs
-st.subheader("2. Enter Your New Project Content")
-project_title = st.text_input("Project Title:", "Project Title: DocMind AI")
+# Section 2: Single Raw Text / Paste Area (Starts completely empty)
+st.subheader("2. Paste Your Entire Document Content")
+raw_user_input = st.text_area("Paste text here (headings, paragraphs, etc.):", value="", height=280)
 
-problem_stmt = st.text_area(
-    "Problem Statement:", 
-    "Writing technical documents like college project reports, research papers, or software guides takes way too much time and effort. People often spend almost half their working time just fixing page layouts, margins, font styles, and citation numbers instead of focusing on their actual work."
-)
-
-proposed_sol = st.text_area(
-    "Proposed Solution:", 
-    "DocMind AI is a smart tool that handles both technical writing and document formatting automatically. It reads your real project files—like code, READMEs, and dataset notes—so every sentence it generates is completely accurate with no made-up facts. A team of three AI agents works together to build a clear table of contents and write out the chapters step by step."
-)
-
-# Section 3: Action Button
+# Section 3: Format & Download Button
 if st.button("🚀 Format Content Using Uploaded Template"):
     if uploaded_file is None:
         st.error("Please upload a `.docx` template file first!")
+    elif not raw_user_input.strip():
+        st.error("Please paste or type some content into the box!")
     else:
-        with st.spinner("Extracting layout geometry & applying styles..."):
-            # Initialize Engine
+        with st.spinner("Parsing layout & formatting document..."):
             engine = DynamicTemplateEngine(uploaded_file)
             
-            st.success("Successfully parsed template layout!")
-            col1, col2 = st.columns(2)
-            col1.metric("Heading Style", f"{engine.style_profile['heading'].get('font_name', 'Default')} ({engine.style_profile['heading'].get('font_size', Pt(14)).pt}pt)")
-            col2.metric("Body Style", f"{engine.style_profile['body'].get('font_name', 'Default')} ({engine.style_profile['body'].get('font_size', Pt(12)).pt}pt)")
+            # Convert raw text into structured blocks
+            content_blocks = parse_raw_text(raw_user_input)
 
-            # Structure content payload
-            content_blocks = [
-                {"type": "heading", "text": project_title},
-                {"type": "heading", "text": "Problem Statement:"},
-                {"type": "body", "text": problem_stmt},
-                {"type": "heading", "text": "Proposed Solution:"},
-                {"type": "body", "text": proposed_sol}
-            ]
-
-            # Generate formatted stream
+            # Generate formatted file stream
             output_doc_stream = engine.generate_report(content_blocks)
 
-            # Download Trigger
+            st.success("Successfully formatted document!")
             st.download_button(
                 label="📥 Download Formatted Word Document",
                 data=output_doc_stream,
