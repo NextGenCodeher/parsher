@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("📄 DocMind AI: Intelligent Template Styler")
-st.write("Upload your reference `.docx` template, paste any raw text, and let AI parse and format it automatically!")
+st.write("Upload your reference `.docx` template, paste any raw text or paragraphs, and let AI parse and format it automatically!")
 
 # ---------------------------------------------------------
 # 1. INTELLIGENT AI PARSER (LLM-BASED STRUCTURAL EXTRACTION)
@@ -20,7 +20,7 @@ st.write("Upload your reference `.docx` template, paste any raw text, and let AI
 def ai_intelligent_parse(raw_text, api_key):
     """
     Uses Gemini LLM to parse unstructured text into semantically labeled blocks.
-    Returns JSON list: [{"type": "heading1"|"heading2"|"body"|"bullet", "text": "..."}]
+    Returns JSON list: [{"type": "heading1"|"heading2"|"body", "text": "..."}]
     """
     client = genai.Client(api_key=api_key)
     
@@ -29,7 +29,7 @@ def ai_intelligent_parse(raw_text, api_key):
     Analyze the following raw text and divide it into structured logical blocks.
     Classify each block into one of these exact types: 'title', 'heading1', 'heading2', or 'body'.
 
-    Return ONLY a raw JSON list of objects with the keys "type" and "text". Do not include markdown code block ticks.
+    Return ONLY a raw JSON list of objects with the keys "type" and "text". Do not include markdown code block ticks or explanation.
 
     Raw Text:
     {raw_text}
@@ -121,9 +121,8 @@ class IntelligentTemplateStyler:
 # 3. STREAMLIT UI
 # ---------------------------------------------------------
 
-# Sidebar API Key Input
-st.sidebar.header("🔑 API Settings")
-gemini_api_key = st.sidebar.text_input("Enter Gemini API Key:", type="password")
+# Retrieve API key automatically from Streamlit Secrets
+api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 st.subheader("1. Upload Reference Template (.docx)")
 uploaded_file = st.file_uploader("Upload sample Word file (Must be .docx)", type=["docx"])
@@ -132,8 +131,8 @@ st.subheader("2. Paste Raw Content")
 raw_user_input = st.text_area("Paste any text or paragraph here:", value="", height=280)
 
 if st.button("🚀 Intelligently Parse & Format Document"):
-    if not gemini_api_key:
-        st.error("Please enter your Gemini API Key in the sidebar!")
+    if not api_key:
+        st.error("⚠️ GEMINI_API_KEY secret not found! Please configure secrets in Streamlit Cloud settings.")
     elif uploaded_file is None:
         st.error("Please upload a `.docx` template file first!")
     elif not raw_user_input.strip():
@@ -142,7 +141,7 @@ if st.button("🚀 Intelligently Parse & Format Document"):
         try:
             with st.spinner("🤖 Intelligent AI parsing in progress..."):
                 # Step 1: AI Intelligent Structural Parsing
-                structured_blocks = ai_intelligent_parse(raw_user_input, gemini_api_key)
+                structured_blocks = ai_intelligent_parse(raw_user_input, api_key)
                 
             with st.spinner("🎨 Applying template styles..."):
                 # Step 2: Inject into Template Engine
